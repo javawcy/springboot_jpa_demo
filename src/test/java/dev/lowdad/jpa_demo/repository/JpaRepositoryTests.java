@@ -1,22 +1,21 @@
 package dev.lowdad.jpa_demo.repository;
 
+import com.querydsl.core.types.Projections;
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import dev.lowdad.jpa_demo.JpaDemoApplicationTests;
-import dev.lowdad.jpa_demo.entity.Permission;
-import dev.lowdad.jpa_demo.entity.Role;
-import dev.lowdad.jpa_demo.entity.RolePermission;
-import dev.lowdad.jpa_demo.entity.User;
+import dev.lowdad.jpa_demo.entity.*;
 import dev.lowdad.jpa_demo.entity.simple.SimpleUser;
 import dev.lowdad.jpa_demo.enums.Gender;
+import dev.lowdad.jpa_demo.model.dto.UserDTO;
 import dev.lowdad.jpa_demo.repository.specification.SpecificationFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Example;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.transaction.annotation.Transactional;
 
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
+import javax.persistence.criteria.*;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -27,6 +26,7 @@ import java.util.List;
  * @author Chongyu
  * @since 2020/10/12
  */
+@Transactional
 public class JpaRepositoryTests extends JpaDemoApplicationTests {
 
     @Autowired
@@ -37,6 +37,8 @@ public class JpaRepositoryTests extends JpaDemoApplicationTests {
     private RolePermissionRepository rolePermissionRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private JPAQueryFactory jpaQuery;
 
     @Test
     void TestCreatePermission() {
@@ -179,6 +181,55 @@ public class JpaRepositoryTests extends JpaDemoApplicationTests {
 
         final List<User> all = userRepository.findAll(SpecificationFactory.equal("username", "java"));
         System.out.println(all);
+
+    }
+
+
+    @Test
+    void TestSpecificationLeftJoin() {
+
+        Specification<User> specification = new Specification<User>() {
+            @Override
+            public Predicate toPredicate(Root<User> root, CriteriaQuery<?> criteriaQuery, CriteriaBuilder criteriaBuilder) {
+                List<Predicate> predicates = new ArrayList<>();
+                Join<User, Role> userRoleJoin = root.join("role", JoinType.LEFT);
+                Join<Role, RolePermission> rolePermission = userRoleJoin.join("permissions", JoinType.LEFT);
+                final Predicate predicate1 = criteriaBuilder.equal(rolePermission.get("id"), 1);
+                predicates.add(predicate1);
+                final Predicate predicate2 = criteriaBuilder.equal(root.get("username"), "golang");
+                predicates.add(predicate2);
+                Predicate[] arr = new Predicate[predicates.size()];
+                return criteriaBuilder.and(predicates.toArray(arr));
+            }
+        };
+        final List<User> all = userRepository.findAll(specification);
+        System.out.println(all);
+
+    }
+
+    @Test
+    void TestQueryDSL() {
+        QRole qRole = QRole.role;
+        final Iterable<Role> admin = roleRepository.findAll(qRole.roleName.eq("admin"));
+        System.out.println(admin);
+    }
+
+    @Test
+    void TestJPAQueryFactory() {
+        QUser user = QUser.user;
+        QRole role = QRole.role;
+        final List<String> fetch = jpaQuery.select(user.username).from(user).fetch();
+        System.out.println(fetch);
+
+        final List<UserDTO> golang = jpaQuery
+                .select(Projections.constructor(UserDTO.class,user.id,user.username,role))
+                .from(user)
+                .leftJoin(role).on(user.role.id.eq(role.id))
+                .where(user.username.eq("golang"))
+                .fetch();
+
+        System.out.println(golang);
+
 
     }
 }
